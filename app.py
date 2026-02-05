@@ -1,48 +1,90 @@
 import streamlit as st
 
-# إعداد القائمة الجانبية
-st.sidebar.title("🛠️ منصة المهندس الكهربائي")
-choice = st.sidebar.selectbox("اختر القسم الرئيسي:", 
-                             ["حاسبة القواطع", "ركن الطاقة المتجددة والـ UPS"])
+# إعداد الصفحة لتناسب الهاتف
+st.set_page_config(page_title="المساعد الكهربائي الشامل", page_icon="⚡", layout="centered")
 
-# --- القسم الأول: القواطع ---
-if choice == "حاسبة القواطع":
-    st.title("🛡️ تصميم القواطع الكهربائية")
-    p = st.number_input("القدرة الكلية (Watt)", value=1000)
-    v = st.selectbox("الجهد (Volt)", [220, 380, 400])
-    phase = st.radio("الطور", ["1-Phase", "3-Phase"])
-    
-    # الحساب
-    if phase == "1-Phase":
-        i = p / (v * 0.8)
-    else:
-        i = p / (1.732 * v * 0.8)
-    
-    st.success(f"التيار: {i:.2f} A | القاطع المقترح: {i*1.25:.1f} A")
+# --- قاعدة بيانات الكابلات القياسية (mm2 -> Amps) ---
+# هذه قيم تقريبية للكابلات النحاسية داخل المواسير
+CABLES_DB = {
+    1.5: 16, 2.5: 20, 4: 27, 6: 34, 10: 48, 
+    16: 66, 25: 88, 35: 110, 50: 135, 70: 175
+}
 
-# --- القسم الثاني: الطاقة المتجددة والـ UPS ---
+# --- القائمة الجانبية ---
+st.sidebar.header("🔧 القائمة الرئيسية")
+mode = st.sidebar.radio("اختر القسم:", ["توزيع كهربائي (Cables & CB)", "طاقة متجددة (Solar & UPS)"])
+
+st.title("👷‍♂️ المساعد الكهربائي الشامل")
+
+# ================= القسم الأول: التوزيع الكهربائي =================
+if mode == "توزيع كهربائي (Cables & CB)":
+    st.subheader("تصميم القواطع والكابلات")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        power = st.number_input("القدرة (وات W)", value=5000, step=100)
+        voltage = st.selectbox("الجهد (Volt)", [220, 380, 400, 415])
+    with col2:
+        pf = st.number_input("معامل القدرة (PF)", 0.5, 1.0, 0.85)
+        phase = st.radio("النظام", ["1-Phase", "3-Phase"])
+
+    # زر الحساب
+    if st.button("حساب القاطع والكابل"):
+        # 1. حساب التيار
+        if phase == "1-Phase":
+            current = power / (voltage * pf)
+        else:
+            current = power / (1.732 * voltage * pf)
+        
+        # 2. حساب القاطع (معامل أمان 1.25)
+        cb_amp = current * 1.25
+        
+        # 3. اختيار الكابل المناسب آلياً
+        selected_cable = "غير متوفر (تيار عالٍ جداً)"
+        for size, amp_capacity in CABLES_DB.items():
+            if amp_capacity >= cb_amp: # الكابل يجب أن يتحمل تيار القاطع
+                selected_cable = f"{size} mm²"
+                break
+        
+        # عرض النتائج
+        st.success(f"⚡ تيار الحمل الفعلي: {current:.2f} أمبير")
+        st.info(f"🛡️ القاطع المقترح (Circuit Breaker): {cb_amp:.1f} أمبير (أو أقرب قياس تجاري)")
+        st.warning(f"🔌 مقطع الكابل النحاسي المقترح: {selected_cable}")
+        st.caption("ملاحظة: حساب الكابل مبني على السعة التياريه فقط (Ampacity) دون حساب هبوط الجهد والمسافة.")
+
+# ================= القسم الثاني: الطاقة المتجددة =================
 else:
-    tab1, tab2 = st.tabs(["☀️ حسابات الشمسية", "🔋 حسابات الـ UPS"])
-    
-    with tab1:
-        st.header("تصميم الألواح")
-        load = st.number_input("الاستهلاك اليومي (kWh)", value=10.0)
-        sun = st.slider("ساعات الذروة", 3.0, 8.0, 5.0)
-        p_watt = st.selectbox("قدرة اللوح", [400, 450, 550])
-        res = round((load * 1.2 * 1000) / (sun * p_watt))
-        st.info(f"عدد الألواح المطلوبة: {res}")
+    st.subheader("أنظمة الطاقة والبطاريات")
+    tab1, tab2 = st.tabs(["☀️ منظومة شمسية", "🔋 نظام UPS"])
 
+    # --- تبويب الطاقة الشمسية ---
+    with tab1:
+        load_kwh = st.number_input("الاستهلاك اليومي (KWh)", value=15.0)
+        sun_h = st.slider("ساعات الشمس (Peak Hours)", 3.0, 8.0, 5.5)
+        panel_w = st.selectbox("قدرة اللوح الواحد (W)", [300, 450, 550, 600])
+        
+        if st.button("احسب الألواح"):
+            # معادلة: (الاستهلاك * 1.3 فواقد) / ساعات الشمس = قدرة المصفوفة
+            array_watt = (load_kwh * 1000 * 1.3) / sun_h
+            panels_count = round(array_watt / panel_w)
+            if panels_count < 1: panels_count = 1
+            
+            st.metric(label="عدد الألواح المطلوبة", value=f"{panels_count} لوح")
+            st.write(f"إجمالي قدرة المصفوفة: {panels_count * panel_w / 1000} كيلو وات")
+
+    # --- تبويب الـ UPS ---
     with tab2:
-        st.header("تصميم نظام الـ UPS")
-        ups_load = st.number_input("إجمالي حمل الأجهزة (Watt)", value=500)
-        backup_time = st.number_input("ساعات التشغيل المطلوبة", value=4)
-        battery_voltage = st.selectbox("جهد نظام البطاريات (V)", [12, 24, 48])
+        st.write("حساب زمن النسخ الاحتياطي (Backup Time)")
+        ups_load_w = st.number_input("حمل الأجهزة (Watt)", value=300)
+        batt_v = st.selectbox("جهد البطارية (V)", [12, 24, 48])
+        batt_ah = st.number_input("سعة البطارية (Ah)", value=100)
+        batt_qty = st.number_input("عدد البطاريات", value=1, step=1)
         
-        # معادلة الـ UPS (Capacity Ah = (Load * Time) / (Voltage * Efficiency))
-        # نعتبر الكفاءة 85% كمعيار هندسي
-        capacity_ah = (ups_load * backup_time) / (battery_voltage * 0.85)
-        
-        st.subheader("النتيجة الهندسية:")
-        st.write(f"تحتاج سعة بطاريات إجمالية لا تقل عن: **{capacity_ah:.1f} Ah**")
-        st.warning(f"مثال: يمكنك استخدام بطاريتين سعة كل منهما {capacity_ah/2:.1f} Ah إذا كان النظام 24 فولت.")
+        if st.button("احسب وقت التشغيل"):
+            # الطاقة الكلية = جهد * سعة * عدد * كفاءة (0.8) * عمق تفريغ (0.7)
+            total_energy_wh = (batt_v * batt_ah * batt_qty) * 0.8 * 0.7
+            hours = total_energy_wh / ups_load_w
+            
+            st.success(f"🕒 الزمن المتوقع للتشغيل: {hours:.2f} ساعة")
+            st.caption("تم احتساب كفاءة وعمق تفريغ للحفاظ على عمر البطاريات.")
 
