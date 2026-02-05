@@ -1,42 +1,48 @@
 import streamlit as st
 
-# إعداد القائمة الجانبية للتنقل
-st.sidebar.title("القائمة الهندسية")
-choice = st.sidebar.radio("اختر الحاسبة:", ["حاسبة القواطع الكهربائية", "حاسبة الطاقة الشمسية"])
+# إعداد القائمة الجانبية
+st.sidebar.title("🛠️ منصة المهندس الكهربائي")
+choice = st.sidebar.selectbox("اختر القسم الرئيسي:", 
+                             ["حاسبة القواطع", "ركن الطاقة المتجددة والـ UPS"])
 
-# --- القسم الأول: حاسبة القواطع ---
-if choice == "حاسبة القواطع الكهربائية":
-    st.title("🛡️ مصمم القواطع الكهربائية (CB)")
+# --- القسم الأول: القواطع ---
+if choice == "حاسبة القواطع":
+    st.title("🛡️ تصميم القواطع الكهربائية")
+    p = st.number_input("القدرة الكلية (Watt)", value=1000)
+    v = st.selectbox("الجهد (Volt)", [220, 380, 400])
+    phase = st.radio("الطور", ["1-Phase", "3-Phase"])
     
-    col1, col2 = st.columns(2)
-    with col1:
-        power = st.number_input("القدرة (وات W)", value=1000)
-        voltage = st.selectbox("الجهد (فولت V)", [220, 380, 400, 415])
-    with col2:
-        pf = st.slider("معامل القدرة (PF)", 0.5, 1.0, 0.8)
-        phase = st.radio("نوع الطور", ["أحادي الطور (1ph)", "ثلاثي الطور (3ph)"])
-
-    # الحسابات الهندسية
-    if phase == "أحادي الطور (1ph)":
-        current = power / (voltage * pf)
+    # الحساب
+    if phase == "1-Phase":
+        i = p / (v * 0.8)
     else:
-        current = power / (1.732 * voltage * pf)
+        i = p / (1.732 * v * 0.8)
     
-    cb_size = current * 1.25 # إضافة معامل أمان 25%
+    st.success(f"التيار: {i:.2f} A | القاطع المقترح: {i*1.25:.1f} A")
 
-    if st.button("حساب سعة القاطع"):
-        st.subheader(f"التيار الفعلي: {current:.2f} أمبير")
-        st.success(f"سعة القاطع المقترحة (أدنى حد): {cb_size:.2f} أمبير")
-        st.warning("ملاحظة: اختر أقرب سعة تجارية أعلى من هذه القيمة (مثلاً: 16A, 20A, 32A...).")
-
-# --- القسم الثاني: حاسبة الطاقة الشمسية ---
+# --- القسم الثاني: الطاقة المتجددة والـ UPS ---
 else:
-    st.title("⚡ حاسبة الطاقة الشمسية")
-    daily_load = st.number_input("الاستهلاك اليومي (KWh)", value=10.0)
-    sun_hours = st.slider("ساعات الذروة الشمسية", 3.0, 8.0, 5.0)
-    panel_watt = st.selectbox("قدرة اللوح (Watt)", [350, 400, 450, 550])
+    tab1, tab2 = st.tabs(["☀️ حسابات الشمسية", "🔋 حسابات الـ UPS"])
     
-    num_panels = round(((daily_load * 1.2) / sun_hours) * 1000 / panel_watt)
-    
-    if st.button("احسب عدد الألواح"):
-        st.success(f"تحتاج تقريباً إلى: {num_panels} لوح شمسي")
+    with tab1:
+        st.header("تصميم الألواح")
+        load = st.number_input("الاستهلاك اليومي (kWh)", value=10.0)
+        sun = st.slider("ساعات الذروة", 3.0, 8.0, 5.0)
+        p_watt = st.selectbox("قدرة اللوح", [400, 450, 550])
+        res = round((load * 1.2 * 1000) / (sun * p_watt))
+        st.info(f"عدد الألواح المطلوبة: {res}")
+
+    with tab2:
+        st.header("تصميم نظام الـ UPS")
+        ups_load = st.number_input("إجمالي حمل الأجهزة (Watt)", value=500)
+        backup_time = st.number_input("ساعات التشغيل المطلوبة", value=4)
+        battery_voltage = st.selectbox("جهد نظام البطاريات (V)", [12, 24, 48])
+        
+        # معادلة الـ UPS (Capacity Ah = (Load * Time) / (Voltage * Efficiency))
+        # نعتبر الكفاءة 85% كمعيار هندسي
+        capacity_ah = (ups_load * backup_time) / (battery_voltage * 0.85)
+        
+        st.subheader("النتيجة الهندسية:")
+        st.write(f"تحتاج سعة بطاريات إجمالية لا تقل عن: **{capacity_ah:.1f} Ah**")
+        st.warning(f"مثال: يمكنك استخدام بطاريتين سعة كل منهما {capacity_ah/2:.1f} Ah إذا كان النظام 24 فولت.")
+
